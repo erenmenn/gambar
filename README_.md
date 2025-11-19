@@ -57,14 +57,14 @@ Pada tahap ini saya memiliki dua berkas inti: movies.csv dan ratings.csv.
 
 menyimpan **25.000.095 baris  berupa data kontinu yang terdapat kolom userid(id pengguna yang melakukan rating), moviesid(Id unik film) ,rating(rating yang diberikan pengguna dari skala 1-5) dan timestamp(waktu melakukan rating)** plus skor rating; angka gede itu muncul karena satu film bisa dibanjiri ribuan review. terdapat 59.047 film unik yang kebagian rating. dari data ini tidak terdapat missing values dan duplikat.
 
-
+<img width="678" height="470" alt="image" src="https://github.com/user-attachments/assets/1126b22d-61c1-4c9c-8f24-dd6bc9b10729" />
 
 Grafik distribusi rating tersebut menunjukkan bahwa sebagian besar pengguna memberikan rating pada rentang 3.0 hingga 4.0, terlihat dari batang histogram yang paling tinggi pada rentang tersebut. Artinya, kecenderungan rating di dataset ini cenderung positif dan jarang terdapat rating sangat rendah. Jumlah rating pada tiap kelompok (bin) bisa mencapai jutaan karena total data sangat besar (25 juta baris), sehingga satu rentang rating tertentu dapat berisi 4–6 juta rating
 
  ### movies.csv 
  berisi **62.423 baris lengkap dengan kolom movie id(key unik film untuk tersambung dengan dataset ratings), title(judul film), genres( genre dari film, satu film bisa miliki 1 atau lebih genre).** Perbedaan jumlah film antara movies.csv (62k film) dan film unik pada ratings.csv (59k film) terjadi karena tidak semua film yang tercatat memiliki rating. dataset ini tidak memiliki missing values, duplikat dan outlier sehingga dataset sudah bersih.
 
-![alt text](image.png)
+<img width="1189" height="590" alt="image" src="https://github.com/user-attachments/assets/39c241d5-351d-4f96-aa3a-5e63aed7635d" />
 
 Distribusi jumlah film per genre pada dataset ini menunjukkan bahwa beberapa kategori film jauh lebih dominan dibanding yang lain. Genre Drama menjadi yang paling banyak ditemui, disusul oleh Comedy, Thriller, dan Romance. Pola ini wajar karena genre-genre tersebut memang umum dan banyak diproduksi dalam industri film. Sementara itu, genre seperti Western, Musical, Film-Noir, hingga IMAX muncul dalam jumlah yang jauh lebih sedikit. Ketidakseimbangan ini memberi gambaran bahwa dataset memiliki keberagaman genre, namun tidak merata.
 ini adalah web mendownload file tersebut
