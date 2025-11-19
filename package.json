@@ -1,0 +1,25 @@
+{
+  "name": "emosiku-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "homepage": "https://erenmenn.github.io/EmosiKu-web",
+  "scripts": {
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "vite": "^7.2.2",
+    "gh-pages": "^5.0.0"
+  }
+}
