@@ -205,28 +205,49 @@ Tahapan evaluasi dilakukan untuk mengukur seberapa akurat model content-based fi
 
 Proses evaluasi dimulai dengan mengambil genre dari film yang sedang dievaluasi menggunakan kode berikut:
 
-
 1. Pada tahap ini, genre film dijadikan sebagai ground-truth atau acuan kebenaran untuk menentukan apakah rekomendasi yang diberikan relevan atau tidak. Genre dianggap sebagai label karena sistem hanya memiliki fitur genre biner, sehingga tidak ada fitur lain yang dapat dijadikan pembanding.
 ```python 
 query_genres = movie_features.loc[idx]
 ```
-2. selanjutnya untuk menghasilkan daftar Top-N rekomendasi berdasarkan nilai cosine similarity tertinggi. Film yang sedang dievaluasi sendiri tidak diikutsertakan dalam hasil rekomendasi (di-skip menggunakan `drop(idx)`), karena tidak masuk akal merekomendasikan film yang sama. Hasilnya diurutkan dari similarity tertinggi ke terendah, lalu diambil sejumlah N teratas (dalam kasus ini N=5).
+
+2. Selanjutnya untuk menghasilkan daftar Top-N rekomendasi berdasarkan nilai cosine similarity tertinggi. Film yang sedang dievaluasi sendiri tidak diikutsertakan dalam hasil rekomendasi (di-skip menggunakan `drop(idx)`), karena tidak masuk akal merekomendasikan film yang sama. Hasilnya diurutkan dari similarity tertinggi ke terendah, lalu diambil sejumlah N teratas (dalam kasus ini N=5).
 ```python
-sims = cos_sim_df_subset.loc[idx].drop(idx).sort_values(ascending=False).head(topn)
+top_sim = sim_df.loc[movie_id].drop(movie_id).sort_values(ascending=False).head(topn)
+top_movie_ids = top_sim.index
 ```
 
 3. Tahap selanjutnya adalah menentukan apakah sebuah rekomendasi relevan atau tidak. Proses ini dilakukan dengan membandingkan genre film rekomendasi dengan genre film asli:
 
-Pada bagian ini, sistem menghitung berapa banyak genre yang tumpang-tindih (overlap) antara film asli dan film rekomendasi. Sebuah rekomendasi dianggap relevan hanya jika memiliki **setidaknya dua genre yang sama** dengan film asli. Ambang batas dua genre ini dipilih agar evaluasi lebih ketat—model tidak sembarangan menganggap film relevan hanya karena memiliki satu kesamaan kecil. Dengan threshold ini, film yang direkomendasikan benar-benar harus memiliki kemiripan genre yang signifikan.
+Pada bagian ini, sistem menghitung berapa banyak genre yang tumpang-tindih (overlap) antara film asli dan film rekomendasi. Sebuah rekomendasi dianggap relevan jika memiliki **setidaknya satu genre yang sama** dengan film asli. Pendekatan ini dipilih untuk memberikan fleksibilitas dalam rekomendasi—film yang memiliki minimal satu kesamaan genre sudah dianggap cukup relevan untuk direkomendasikan kepada pengguna.
 ```python
-rec_genres = movie_features.loc[movie_id]
-overlap = set(query_genres.index[query_genres == 1]) & set(rec_genres.index[rec_genres == 1])
-relevant = 1 if len(overlap) >= 2 else 0
+true_genres = set(feature_df.columns[feature_df.loc[movie_id] == 1])
+relevant = 0
+for mid in top_movie_ids:
+    rec_genres = set(feature_df.columns[feature_df.loc[mid] == 1])
+    if true_genres & rec_genres:  
+        relevant += 1
 ```
+
+#### **Fungsi Precision@K**
 
 Setelah relevansi setiap rekomendasi ditentukan, precision per film dihitung menggunakan formula sederhana:
 ```python
-return relevant / topn
+def precision_per_film(sim_df, feature_df, movie_id, topn=5):
+    # Ambil top-N rekomendasi berdasarkan similarity
+    top_sim = sim_df.loc[movie_id].drop(movie_id).sort_values(ascending=False).head(topn)
+    top_movie_ids = top_sim.index
+    
+    # Ekstrak genre film asli
+    true_genres = set(feature_df.columns[feature_df.loc[movie_id] == 1])
+    
+    # Hitung jumlah rekomendasi yang relevan
+    relevant = 0
+    for mid in top_movie_ids:
+        rec_genres = set(feature_df.columns[feature_df.loc[mid] == 1])
+        if true_genres & rec_genres:  
+            relevant += 1
+    
+    return relevant / topn
 ```
 
 **Formula:**
@@ -236,14 +257,60 @@ Precision@K = (Jumlah film relevan) / K
 
 Precision@K menghitung proporsi film yang relevan dari total K rekomendasi yang diberikan. Misalnya, jika dari 5 rekomendasi ternyata semua relevan, maka Precision@5 = 5/5 = 1.00 atau 100%. Metrik ini memberikan gambaran langsung tentang kualitas rekomendasi yang dihasilkan model.
 
-Untuk mendapatkan gambaran performa model secara keseluruhan, precision dihitung untuk beberapa film sampel, kemudian dirata-ratakan:
+#### **Fungsi NDCG@K**
+
+Selain Precision, model juga dievaluasi menggunakan **NDCG (Normalized Discounted Cumulative Gain)** yang memperhitungkan posisi/urutan rekomendasi. NDCG memberikan bobot lebih tinggi untuk item relevan yang muncul di posisi atas.
 ```python
-for idx in sample_indices:
-    prec = precision_per_film(...)
-    print(f"> Precision@5: {prec:.2f}")
+from math import log2
+
+def dcg_at_k(scores):
+    """Hitung DCG dari list relevance scores"""
+    return sum(score / log2(i + 2) for i, score in enumerate(scores))
+
+def ndcg_at_k(sim_df, feature_df, movie_id, k=5):
+    # Ambil top-K rekomendasi
+    top_sim = sim_df.loc[movie_id].drop(movie_id).sort_values(ascending=False).head(k)
+    top_movie_ids = top_sim.index
+    
+    # Ekstrak genre film asli
+    true_genres = set(feature_df.columns[feature_df.loc[movie_id] == 1])
+    
+    # Buat binary relevance score (1 jika ada overlap genre, 0 jika tidak)
+    relevance = []
+    for mid in top_movie_ids:
+        rec_genres = set(feature_df.columns[feature_df.loc[mid] == 1])
+        relevance.append(1 if true_genres & rec_genres else 0)
+    
+    # Hitung DCG (Discounted Cumulative Gain)
+    dcg = dcg_at_k(relevance)
+    
+    # Hitung IDCG (Ideal DCG) - skenario terbaik dengan urutan sempurna
+    idcg = dcg_at_k(sorted(relevance, reverse=True))
+    
+    # Normalisasi DCG dengan IDCG
+    return dcg / idcg if idcg > 0 else 0.0
 ```
 
-Proses loop ini dijalankan pada 10 film pertama untuk menampilkan nilai precision masing-masing film. Nilai-nilai ini kemudian dapat dirata-ratakan untuk melihat performa model secara global, yang disebut sebagai Precision@5 makro.
+**Formula:**
+```
+DCG@K = Σ (rel_i / log₂(i + 1))
+NDCG@K = DCG@K / IDCG@K
+```
+
+NDCG mengukur seberapa baik model menempatkan item relevan di posisi teratas. Nilai NDCG = 1.0 berarti urutan rekomendasi sudah sempurna (semua item relevan di posisi teratas), sementara nilai mendekati 0 berarti urutan buruk atau tidak ada item relevan.
+
+#### **Evaluasi Model**
+
+Untuk mendapatkan gambaran performa model secara keseluruhan, kedua metrik dihitung untuk beberapa film sampel:
+```python
+for idx in sample_indices:
+    prec = precision_per_film(cos_sim_df_subset, movie_features, idx, topn=5)
+    nd = ndcg_at_k(cos_sim_df_subset, movie_features, idx, k=5)
+    print(f"> Precision@5: {prec:.2f}")
+    print(f"> NDCG@5: {nd:.3f}")
+```
+
+Proses loop ini dijalankan pada 10 film pertama untuk menampilkan nilai precision dan NDCG masing-masing film. Nilai-nilai ini kemudian dapat dirata-ratakan untuk melihat performa model secara global.
 
 ### Hasil Evaluasi Content-Based Filtering
 
@@ -251,22 +318,21 @@ Sebagai contoh konkret, berikut adalah hasil evaluasi untuk film **Jumanji (1995
 ```
 === Film: Jumanji (1995) (ID 2) ===
 Top-5 Rekomendasi:
-* Indian in the Cupboard, The (1995)  | similarity: 100.000
-* NeverEnding Story III, The (1994)   | similarity: 100.000
-* Kids of the Round Table (1995)      | similarity: 86.600
-* Amazing Panda Adventure, The (1995) | similarity: 81.650
-* Casper (1995)                       | similarity: 81.650
+* Indian in the Cupboard, The (1995)      | similarity: 100.000
+* NeverEnding Story III, The (1994)       | similarity: 100.000
+* Escape to Witch Mountain (1975)         | similarity: 100.000
+* Wizard of Oz, The (1939)                | similarity: 86.600
+* Kids of the Round Table (1995)          | similarity: 86.600
 
 Precision@5: 1.00
 NDCG@5: 1.000
 ```
 
-Hasil evaluasi untuk film *Jumanji (1995)* menunjukkan bahwa seluruh lima rekomendasi yang diberikan model memiliki kesamaan genre yang kuat dengan film aslinya. Hal ini tercermin dari nilai **Precision@5 yang mencapai 1.00** atau 100%, yang berarti semua rekomendasi yang diberikan relevan dan memenuhi kriteria minimal dua genre yang sama.
+Hasil evaluasi untuk film *Jumanji (1995)* menunjukkan bahwa seluruh lima rekomendasi yang diberikan model memiliki kesamaan genre yang kuat dengan film aslinya. Hal ini tercermin dari nilai **Precision@5 yang mencapai 1.00** atau 100%, yang berarti semua rekomendasi yang diberikan relevan dan memenuhi kriteria minimal satu genre yang sama.
 
-Nilai NDCG@5 = 1.000 berarti model tidak hanya memberi rekomendasi yang relevan, tetapi juga menempatkannya dalam urutan yang paling ideal. Semua film yang direkomendasikan memiliki kemiripan genre yang sangat tinggi dengan Jumanji, sehingga baik relevansi maupun urutan rekomendasinya sudah sempurna.
+Nilai **NDCG@5 = 1.000** berarti model tidak hanya memberi rekomendasi yang relevan, tetapi juga menempatkannya dalam urutan yang paling ideal. Tiga film pertama memiliki similarity score sempurna (100%), menunjukkan bahwa mereka berbagi keseluruhan set genre dengan Jumanji. Film seperti *Indian in the Cupboard*, *NeverEnding Story III*, dan *Escape to Witch Mountain* semuanya merupakan film petualangan fantasi untuk anak-anak, sama seperti Jumanji. Dua film berikutnya (*Wizard of Oz* dan *Kids of the Round Table*) juga sangat relevan dengan similarity score 86.600%, mempertahankan tema petualangan dan fantasi yang konsisten.
 
-Hasil ini menunjukkan bahwa model content-based filtering bekerja sangat baik dalam menemukan film-film yang benar-benar segenre dan menempatkannya pada posisi ranking yang tepat.
-
+Hasil ini menunjukkan bahwa model content-based filtering bekerja sangat baik dalam menemukan film-film yang benar-benar segenre dan menempatkannya pada posisi ranking yang tepat berdasarkan tingkat kemiripan mereka.
 
 ## 6.2 Evaluasi Collaborative Filtering
 
